@@ -7,7 +7,7 @@ import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import calendarRoutes from "./routes/calendar.js"; // ahora solo CRUD con service account
+import calendarRoutes from "./routes/calendar.js";
 
 dotenv.config();
 
@@ -67,20 +67,7 @@ startServer();
 /*       GOOGLE CALENDAR (SERVICE ACCOUNT)         */
 /* ------------------------------------------------ */
 
-// 👉 YA NO EXISTEN:
-//    /calendar/auth
-//    /calendar/redirect
-
-// Ahora solamente tenemos CRUD:
 app.use("/calendar", calendarRoutes);
-
-/*
-Rutas disponibles:
-GET    /calendar/events
-POST   /calendar/events
-PUT    /calendar/events/:id
-DELETE /calendar/events/:id
-*/
 
 /* ------------------------------------------------ */
 /*        SOCKET.IO: ONLINE USERS + HEARTBEAT       */
@@ -110,6 +97,7 @@ async function broadcastUserStatus() {
 io.on("connection", (socket) => {
   console.log("🔌 Cliente conectado:", socket.id);
 
+  /* ---------------- JOIN ---------------- */
   socket.on("join", async (username) => {
     onlineUsers.set(socket.id, {
       username,
@@ -120,14 +108,34 @@ io.on("connection", (socket) => {
     broadcastUserStatus();
   });
 
-  socket.on("heartbeat", () => {
+  /* ---------------- HEARTBEAT ---------------- */
+  socket.on("heartbeat", async (username) => {
     if (onlineUsers.has(socket.id)) {
       const data = onlineUsers.get(socket.id);
       data.lastBeat = Date.now();
       onlineUsers.set(socket.id, data);
     }
+
+    await updateLastSeen(username);
   });
 
+  /* ---------------- FORCE DISCONNECT (Cierre pestaña) ---------------- */
+  socket.on("force-disconnect", async (username) => {
+    console.log("⚠️ Force disconnect:", username);
+
+    await updateLastSeen(username);
+
+    // Eliminarlo manualmente del mapa de online
+    for (const [id, data] of onlineUsers.entries()) {
+      if (data.username === username) {
+        onlineUsers.delete(id);
+      }
+    }
+
+    broadcastUserStatus();
+  });
+
+  /* ---------------- DISCONNECT NORMAL ---------------- */
   socket.on("disconnect", async () => {
     const userData = onlineUsers.get(socket.id);
 
@@ -140,7 +148,7 @@ io.on("connection", (socket) => {
     console.log("❌ Cliente desconectado:", socket.id);
   });
 
-  /* CRM EVENTS */
+  /* ---------------- CRM EVENTS ---------------- */
   socket.on("client-updated", (client) => io.emit("client-updated", client));
   socket.on("client-deleted", (id) => io.emit("client-deleted", id));
   socket.on("task-updated", (task) => io.emit("task-updated", task));
@@ -149,6 +157,10 @@ io.on("connection", (socket) => {
   socket.on("expense-updated", (exp) => io.emit("expense-updated", exp));
   socket.on("expense-deleted", (id) => io.emit("expense-deleted", id));
 });
+
+/* ------------------------------------------------ */
+/*   TIMEOUT: Si no da heartbeat → marcar offline  */
+/* ------------------------------------------------ */
 
 setInterval(async () => {
   const now = Date.now();

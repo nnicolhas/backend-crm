@@ -43,7 +43,7 @@ const calendar = google.calendar({
   auth,
 });
 
-const CALENDAR_ID = "primary";
+const CALENDAR_ID = "bicodeservices.info@gmail.com";
 
 /* ------------------------------------------------ */
 /*                     GET EVENTS                   */
