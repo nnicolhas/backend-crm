@@ -6,7 +6,6 @@ import { createServer } from "http";
 import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 import { google } from "googleapis";
-import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -65,12 +64,11 @@ startServer();
 /*            GOOGLE CALENDAR - CONFIG              */
 /* ------------------------------------------------ */
 
-const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID; // ej: bicodeservices.info@gmail.com
-const CREDENTIALS_PATH = path.join(__dirname, "google", "credentials.json");
+const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
 
+// 🔥 NUEVO: LEER CREDENCIALES DESDE VARIABLES DE ENTORNO
 function getCalendarClient() {
-  const keyFile = fs.readFileSync(CREDENTIALS_PATH, "utf8");
-  const key = JSON.parse(keyFile);
+  const key = JSON.parse(process.env.GOOGLE_CREDENTIALS);
 
   const SCOPES = ["https://www.googleapis.com/auth/calendar"];
 
@@ -375,7 +373,7 @@ app.delete("/expenses/:id", async (req, res) => {
 /*           API: GOOGLE CALENDAR CRUD             */
 /* ------------------------------------------------ */
 
-// Listar eventos (para el CRM)
+// Listar eventos
 app.get("/api/calendar-events", async (req, res) => {
   try {
     const calendar = getCalendarClient();
@@ -395,9 +393,9 @@ app.get("/api/calendar-events", async (req, res) => {
     const events = response.data.items || [];
     res.json(events);
   } catch (err) {
-  console.error("🔥 Google Calendar FULL ERROR (GET):", JSON.stringify(err, null, 2));
-  res.status(500).json({ error: "Error al obtener eventos de Google Calendar" });
-}
+    console.error("🔥 Google Calendar FULL ERROR (GET):", JSON.stringify(err, null, 2));
+    res.status(500).json({ error: "Error al obtener eventos de Google Calendar" });
+  }
 });
 
 // Crear evento
@@ -409,12 +407,8 @@ app.post("/api/calendar-events", async (req, res) => {
     const event = {
       summary: title,
       description,
-      start: {
-        dateTime: start,
-      },
-      end: {
-        dateTime: end,
-      },
+      start: { dateTime: start },
+      end: { dateTime: end },
     };
 
     const response = await calendar.events.insert({
@@ -439,12 +433,8 @@ app.put("/api/calendar-events/:id", async (req, res) => {
     const event = {
       summary: title,
       description,
-      start: {
-        dateTime: start,
-      },
-      end: {
-        dateTime: end,
-      },
+      start: { dateTime: start },
+      end: { dateTime: end },
     };
 
     const response = await calendar.events.patch({
