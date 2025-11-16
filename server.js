@@ -7,7 +7,7 @@ import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import calendarRoutes from "./routes/calendar.js"; // NUEVO: integración Google Calendar OAuth
+import calendarRoutes from "./routes/calendar.js"; // ahora solo CRUD con service account
 
 dotenv.config();
 
@@ -19,6 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
 app.use(
   cors({
     origin: "*",
@@ -63,17 +64,21 @@ async function startServer() {
 startServer();
 
 /* ------------------------------------------------ */
-/*        GOOGLE CALENDAR OAUTH (NUEVO)            */
+/*       GOOGLE CALENDAR (SERVICE ACCOUNT)         */
 /* ------------------------------------------------ */
 
+// 👉 YA NO EXISTEN:
+//    /calendar/auth
+//    /calendar/redirect
+
+// Ahora solamente tenemos CRUD:
 app.use("/calendar", calendarRoutes);
+
 /*
 Rutas disponibles:
-GET  /calendar/auth
-GET  /calendar/redirect
-GET  /calendar/events
-POST /calendar/events
-PUT  /calendar/events/:id
+GET    /calendar/events
+POST   /calendar/events
+PUT    /calendar/events/:id
 DELETE /calendar/events/:id
 */
 

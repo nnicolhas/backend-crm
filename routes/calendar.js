@@ -1,8 +1,6 @@
 // backend/routes/calendar.js
 import { Router } from "express";
 import {
-  authUrl,
-  handleGoogleRedirect,
   getEvents,
   createEvent,
   updateEvent,
@@ -12,25 +10,19 @@ import {
 const router = Router();
 
 /* ------------------------------------------------ */
-/*                GOOGLE CALENDAR ROUTES           */
+/*              GOOGLE CALENDAR ROUTES              */
 /* ------------------------------------------------ */
 
-// ➤ Genera la URL para conectar Google
-router.get("/auth", authUrl);
-
-// ➤ Google redirige acá con el "code"
-router.get("/redirect", handleGoogleRedirect);
-
-// ➤ Obtener todos los eventos
+// Obtener todos los eventos
 router.get("/events", getEvents);
 
-// ➤ Crear evento nuevo
+// Crear evento
 router.post("/events", createEvent);
 
-// ➤ Editar evento por ID
+// Editar evento
 router.put("/events/:id", updateEvent);
 
-// ➤ Borrar evento por ID
+// Borrar evento
 router.delete("/events/:id", deleteEvent);
 
 export default router;
