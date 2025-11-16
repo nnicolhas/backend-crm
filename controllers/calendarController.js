@@ -2,22 +2,35 @@ import { google } from "googleapis";
 import fs from "fs";
 
 /* ------------------------------------------------ */
-/*     CARGAR CREDENCIALES DE LA SERVICE ACCOUNT    */
+/*     DETECTAR AUTOMÁTICAMENTE DÓNDE ESTÁ EL JSON  */
+/* ------------------------------------------------ */
+
+let SERVICE_ACCOUNT_PATH = "/etc/secrets/service_account.json"; // Render
+
+// Si NO existe ese archivo, usar el local
+if (!fs.existsSync(SERVICE_ACCOUNT_PATH)) {
+  SERVICE_ACCOUNT_PATH = "./config/service_account.json"; // Localhost
+}
+
+console.log("📁 Usando credenciales desde:", SERVICE_ACCOUNT_PATH);
+
+/* ------------------------------------------------ */
+/*          CARGAR CREDENCIALES SERVICE ACCOUNT     */
 /* ------------------------------------------------ */
 
 let serviceAcc;
+
 try {
-  serviceAcc = JSON.parse(
-    fs.readFileSync("./config/service_account.json", "utf8")
-  );
-  console.log("🔐 Servicio Google Calendar cargado.");
+  serviceAcc = JSON.parse(fs.readFileSync(SERVICE_ACCOUNT_PATH, "utf8"));
+  console.log("🔐 Service Account cargada OK.");
 } catch (err) {
-  console.error("❌ ERROR: No se pudo leer ./config/service_account.json");
+  console.error("❌ ERROR leyendo credenciales:", SERVICE_ACCOUNT_PATH);
+  console.error(err);
   throw err;
 }
 
 /* ------------------------------------------------ */
-/*              AUTENTICACIÓN AUTOMÁTICA            */
+/*              AUTENTICACIÓN GOOGLE                */
 /* ------------------------------------------------ */
 
 const auth = new google.auth.GoogleAuth({
@@ -30,7 +43,6 @@ const calendar = google.calendar({
   auth,
 });
 
-// Usar calendario principal del usuario
 const CALENDAR_ID = "primary";
 
 /* ------------------------------------------------ */
