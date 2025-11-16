@@ -31,10 +31,11 @@ app.use(
 app.use(express.json());
 
 /* ------------------------------------------------ */
-/*          HTTP SERVER + SOCKET.IO                */
+/*         HTTP SERVER + SOCKET.IO SETUP            */
 /* ------------------------------------------------ */
 
 const httpServer = createServer(app);
+
 const io = new Server(httpServer, {
   cors: { origin: "*" },
 });
@@ -64,13 +65,13 @@ async function startServer() {
 startServer();
 
 /* ------------------------------------------------ */
-/*       GOOGLE CALENDAR (SERVICE ACCOUNT)         */
+/*            GOOGLE CALENDAR (SERVICE ACCOUNT)     */
 /* ------------------------------------------------ */
 
 app.use("/calendar", calendarRoutes);
 
 /* ------------------------------------------------ */
-/*        SOCKET.IO: ONLINE USERS + HEARTBEAT       */
+/*       SOCKET.IO: ONLINE USERS + HEARTBEAT        */
 /* ------------------------------------------------ */
 
 let onlineUsers = new Map();
@@ -97,7 +98,7 @@ async function broadcastUserStatus() {
 io.on("connection", (socket) => {
   console.log("🔌 Cliente conectado:", socket.id);
 
-  /* ---------------- JOIN ---------------- */
+  /* JOIN */
   socket.on("join", async (username) => {
     onlineUsers.set(socket.id, {
       username,
@@ -108,7 +109,7 @@ io.on("connection", (socket) => {
     broadcastUserStatus();
   });
 
-  /* ---------------- HEARTBEAT ---------------- */
+  /* HEARTBEAT */
   socket.on("heartbeat", async (username) => {
     if (onlineUsers.has(socket.id)) {
       const data = onlineUsers.get(socket.id);
@@ -119,13 +120,12 @@ io.on("connection", (socket) => {
     await updateLastSeen(username);
   });
 
-  /* ---------------- FORCE DISCONNECT (Cierre pestaña) ---------------- */
+  /* FORCE DISCONNECT */
   socket.on("force-disconnect", async (username) => {
     console.log("⚠️ Force disconnect:", username);
 
     await updateLastSeen(username);
 
-    // Eliminarlo manualmente del mapa de online
     for (const [id, data] of onlineUsers.entries()) {
       if (data.username === username) {
         onlineUsers.delete(id);
@@ -135,7 +135,7 @@ io.on("connection", (socket) => {
     broadcastUserStatus();
   });
 
-  /* ---------------- DISCONNECT NORMAL ---------------- */
+  /* DISCONNECT NORMAL */
   socket.on("disconnect", async () => {
     const userData = onlineUsers.get(socket.id);
 
@@ -148,18 +148,32 @@ io.on("connection", (socket) => {
     console.log("❌ Cliente desconectado:", socket.id);
   });
 
-  /* ---------------- CRM EVENTS ---------------- */
+  /* ------------------------------------------------ */
+  /*                 REALTIME EVENTS                  */
+  /* ------------------------------------------------ */
+
+  // CLIENTES
   socket.on("client-updated", (client) => io.emit("client-updated", client));
   socket.on("client-deleted", (id) => io.emit("client-deleted", id));
+
+  // TAREAS
   socket.on("task-updated", (task) => io.emit("task-updated", task));
   socket.on("task-deleted", (id) => io.emit("task-deleted", id));
+
+  // ACTIVIDAD
   socket.on("activity-updated", (log) => io.emit("activity-updated", log));
+
+  // GASTOS
   socket.on("expense-updated", (exp) => io.emit("expense-updated", exp));
   socket.on("expense-deleted", (id) => io.emit("expense-deleted", id));
+
+  // ⭐ JOBS (TRABAJOS) — REALTIME
+  socket.on("job-updated", (job) => io.emit("job-updated", job));
+  socket.on("job-deleted", (id) => io.emit("job-deleted", id));
 });
 
 /* ------------------------------------------------ */
-/*   TIMEOUT: Si no da heartbeat → marcar offline  */
+/*        TIMEOUT HEARTBEAT CHECK                   */
 /* ------------------------------------------------ */
 
 setInterval(async () => {
@@ -184,7 +198,7 @@ app.get("/", (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*              HELPERS NORMALIZACIÓN              */
+/*           HELPERS NORMALIZACIÓN                  */
 /* ------------------------------------------------ */
 
 function cleanHTML(text) {
@@ -199,7 +213,7 @@ function normalizeID(obj) {
 }
 
 /* ------------------------------------------------ */
-/*                API: CLIENTES CRUD               */
+/*                 CLIENTES CRUD                    */
 /* ------------------------------------------------ */
 
 app.get("/clients", async (req, res) => {
@@ -244,7 +258,7 @@ app.delete("/clients/:id", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*               API: ACTIVIDAD CRUD               */
+/*                ACTIVIDAD CRUD                   */
 /* ------------------------------------------------ */
 
 app.get("/activities", async (req, res) => {
@@ -273,7 +287,7 @@ app.post("/activities", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*               API: TASKS CRUD                   */
+/*                    TASKS CRUD                   */
 /* ------------------------------------------------ */
 
 app.get("/tasks", async (req, res) => {
@@ -315,7 +329,6 @@ app.put("/tasks/:id", async (req, res) => {
 
 app.delete("/tasks/:id", async (req, res) => {
   const id = req.params.id;
-
   await db.collection("tasks").deleteOne({ _id: new ObjectId(id) });
 
   io.emit("task-deleted", id);
@@ -323,7 +336,7 @@ app.delete("/tasks/:id", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*             API: EXPENSES CRUD                  */
+/*                EXPENSES CRUD                    */
 /* ------------------------------------------------ */
 
 app.get("/expenses", async (req, res) => {
@@ -348,28 +361,51 @@ app.post("/expenses", async (req, res) => {
   res.json(full);
 });
 
-app.put("/expenses/:id", async (req, res) => {
-  const id = req.params.id;
+/* ------------------------------------------------ */
+/*                     JOBS CRUD                    */
+/* ------------------------------------------------ */
 
-  await db
-    .collection("expenses")
-    .updateOne({ _id: new ObjectId(id) }, { $set: req.body });
+app.get("/jobs", async (req, res) => {
+  const jobs = await db.collection("jobs").find().toArray();
+  res.json(jobs.map(normalizeID));
+});
 
-  const updated = await db
-    .collection("expenses")
-    .findOne({ _id: new ObjectId(id) });
+app.post("/jobs", async (req, res) => {
+  const job = {
+    ...req.body,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
 
-  const full = normalizeID(updated);
+  const result = await db.collection("jobs").insertOne(job);
+  const full = normalizeID({ ...job, _id: result.insertedId });
 
-  io.emit("expense-updated", full);
+  io.emit("job-updated", full);
   res.json(full);
 });
 
-app.delete("/expenses/:id", async (req, res) => {
+app.put("/jobs/:id", async (req, res) => {
   const id = req.params.id;
 
-  await db.collection("expenses").deleteOne({ _id: new ObjectId(id) });
+  await db.collection("jobs").updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { ...req.body, updatedAt: new Date().toISOString() } }
+  );
 
-  io.emit("expense-deleted", id);
+  const updated = await db.collection("jobs").findOne({ _id: new ObjectId(id) });
+  const full = normalizeID(updated);
+
+  io.emit("job-updated", full);
+  res.json(full);
+});
+
+app.delete("/jobs/:id", async (req, res) => {
+  const id = req.params.id;
+
+  await db.collection("jobs").deleteOne({ _id: new ObjectId(id) });
+
+  io.emit("job-deleted", id);
   res.json({ ok: true });
 });
+
+export { io };
