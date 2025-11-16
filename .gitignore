@@ -1,3 +1,1 @@
-.env
-node_modules
-
+config/client_secret.json

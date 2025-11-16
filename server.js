@@ -5,9 +5,9 @@ import { Server } from "socket.io";
 import { createServer } from "http";
 import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
-import { google } from "googleapis";
 import path from "path";
 import { fileURLToPath } from "url";
+import calendarRoutes from "./routes/calendar.js"; // NUEVO: integración Google Calendar OAuth
 
 dotenv.config();
 
@@ -19,11 +19,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(cors({
-  origin: "*",
-  methods: "GET,POST,PUT,DELETE",
-  allowedHeaders: "Content-Type,Authorization"
-}));
+app.use(
+  cors({
+    origin: "*",
+    methods: "GET,POST,PUT,DELETE",
+    allowedHeaders: "Content-Type,Authorization",
+  })
+);
 
 app.use(express.json());
 
@@ -61,32 +63,25 @@ async function startServer() {
 startServer();
 
 /* ------------------------------------------------ */
-/*            GOOGLE CALENDAR - CONFIG              */
+/*        GOOGLE CALENDAR OAUTH (NUEVO)            */
 /* ------------------------------------------------ */
 
-const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
-
-// 🔥 NUEVO: LEER CREDENCIALES DESDE VARIABLES DE ENTORNO
-function getCalendarClient() {
-  const key = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-
-  const SCOPES = ["https://www.googleapis.com/auth/calendar"];
-
-  const auth = new google.auth.JWT(
-    key.client_email,
-    undefined,
-    key.private_key,
-    SCOPES
-  );
-
-  return google.calendar({ version: "v3", auth });
-}
+app.use("/calendar", calendarRoutes);
+/*
+Rutas disponibles:
+GET  /calendar/auth
+GET  /calendar/redirect
+GET  /calendar/events
+POST /calendar/events
+PUT  /calendar/events/:id
+DELETE /calendar/events/:id
+*/
 
 /* ------------------------------------------------ */
-/*    SOCKET.IO — ONLINE USERS + HEARTBEAT + LAST SEEN */
+/*        SOCKET.IO: ONLINE USERS + HEARTBEAT       */
 /* ------------------------------------------------ */
 
-let onlineUsers = new Map(); // socket.id → { username, lastBeat }
+let onlineUsers = new Map();
 
 async function updateLastSeen(username) {
   await db.collection("users_status").updateOne(
@@ -137,22 +132,15 @@ io.on("connection", (socket) => {
     }
 
     broadcastUserStatus();
-
     console.log("❌ Cliente desconectado:", socket.id);
   });
 
-  /* ---------------------------------------------- */
-  /*                SOCKETS DEL CRM                 */
-  /* ---------------------------------------------- */
-
+  /* CRM EVENTS */
   socket.on("client-updated", (client) => io.emit("client-updated", client));
   socket.on("client-deleted", (id) => io.emit("client-deleted", id));
-
   socket.on("task-updated", (task) => io.emit("task-updated", task));
   socket.on("task-deleted", (id) => io.emit("task-deleted", id));
-
   socket.on("activity-updated", (log) => io.emit("activity-updated", log));
-
   socket.on("expense-updated", (exp) => io.emit("expense-updated", exp));
   socket.on("expense-deleted", (id) => io.emit("expense-deleted", id));
 });
@@ -367,103 +355,4 @@ app.delete("/expenses/:id", async (req, res) => {
 
   io.emit("expense-deleted", id);
   res.json({ ok: true });
-});
-
-/* ------------------------------------------------ */
-/*           API: GOOGLE CALENDAR CRUD             */
-/* ------------------------------------------------ */
-
-// Listar eventos
-app.get("/api/calendar-events", async (req, res) => {
-  try {
-    const calendar = getCalendarClient();
-
-    const now = new Date();
-    const oneYearAhead = new Date();
-    oneYearAhead.setFullYear(now.getFullYear() + 1);
-
-    const response = await calendar.events.list({
-      calendarId: GOOGLE_CALENDAR_ID,
-      timeMin: now.toISOString(),
-      timeMax: oneYearAhead.toISOString(),
-      singleEvents: true,
-      orderBy: "startTime",
-    });
-
-    const events = response.data.items || [];
-    res.json(events);
-  } catch (err) {
-    console.error("🔥 Google Calendar FULL ERROR (GET):", JSON.stringify(err, null, 2));
-    res.status(500).json({ error: "Error al obtener eventos de Google Calendar" });
-  }
-});
-
-// Crear evento
-app.post("/api/calendar-events", async (req, res) => {
-  try {
-    const { title, description, start, end } = req.body;
-    const calendar = getCalendarClient();
-
-    const event = {
-      summary: title,
-      description,
-      start: { dateTime: start },
-      end: { dateTime: end },
-    };
-
-    const response = await calendar.events.insert({
-      calendarId: GOOGLE_CALENDAR_ID,
-      requestBody: event,
-    });
-
-    res.json(response.data);
-  } catch (err) {
-    console.error("Google Calendar Error (POST):", err);
-    res.status(500).json({ error: "Error al crear evento" });
-  }
-});
-
-// Actualizar evento
-app.put("/api/calendar-events/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { title, description, start, end } = req.body;
-    const calendar = getCalendarClient();
-
-    const event = {
-      summary: title,
-      description,
-      start: { dateTime: start },
-      end: { dateTime: end },
-    };
-
-    const response = await calendar.events.patch({
-      calendarId: GOOGLE_CALENDAR_ID,
-      eventId: id,
-      requestBody: event,
-    });
-
-    res.json(response.data);
-  } catch (err) {
-    console.error("Google Calendar Error (PUT):", err);
-    res.status(500).json({ error: "Error al actualizar evento" });
-  }
-});
-
-// Borrar evento
-app.delete("/api/calendar-events/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const calendar = getCalendarClient();
-
-    await calendar.events.delete({
-      calendarId: GOOGLE_CALENDAR_ID,
-      eventId: id,
-    });
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("Google Calendar Error (DELETE):", err);
-    res.status(500).json({ error: "Error al borrar evento" });
-  }
 });
