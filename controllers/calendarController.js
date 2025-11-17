@@ -59,10 +59,17 @@ export const getEvents = async (req, res) => {
       timeMin: new Date(2000, 0, 1).toISOString(),
     });
 
-    res.json(resp.data.items || []);
+    return res.json(resp.data.items || []);
   } catch (err) {
-    console.error("❌ Error Google GET:", err?.response?.data || err);
-    res.status(500).json({ error: "Error al obtener eventos" });
+    console.error("❌ Error Google GET:");
+    console.error("Mensaje:", err.message);
+    console.error("Código:", err.code);
+    console.error("Detalle completo:", err.errors || err.response?.data || err);
+
+    return res.status(500).json({
+      error: "Error al obtener eventos",
+      detail: err.errors || err.response?.data || err.message,
+    });
   }
 };
 
@@ -84,10 +91,10 @@ export const createEvent = async (req, res) => {
       requestBody: newEvent,
     });
 
-    res.json(result.data);
+    return res.json(result.data);
   } catch (err) {
     console.error("❌ Error Google CREATE:", err?.response?.data || err);
-    res.status(500).json({ error: "Error al crear evento" });
+    return res.status(500).json({ error: "Error al crear evento" });
   }
 };
 
@@ -112,10 +119,10 @@ export const updateEvent = async (req, res) => {
       requestBody: updatedEvent,
     });
 
-    res.json(result.data);
+    return res.json(result.data);
   } catch (err) {
     console.error("❌ Error Google UPDATE:", err?.response?.data || err);
-    res.status(500).json({ error: "Error al actualizar evento" });
+    return res.status(500).json({ error: "Error al actualizar evento" });
   }
 };
 
@@ -132,9 +139,9 @@ export const deleteEvent = async (req, res) => {
       eventId: id,
     });
 
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
     console.error("❌ Error Google DELETE:", err?.response?.data || err);
-    res.status(500).json({ error: "Error al borrar evento" });
+    return res.status(500).json({ error: "Error al borrar evento" });
   }
 };
