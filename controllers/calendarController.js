@@ -1,20 +1,19 @@
 // backend/controllers/calendarController.js
 
 import { google } from "googleapis";
-import { googleAuth } from "../server.js";
+import { googleAuth } from "../auth/googleAuth.js";
 
 /* ------------------------------------------------ */
 /*              GOOGLE CALENDAR CLIENT              */
 /* ------------------------------------------------ */
 
-// Usamos el auth que ya está creado en server.js
-// Esto evita duplicar credenciales y problemas en Render
+// Cliente Calendar usando la autenticación centralizada
 const calendar = google.calendar({
   version: "v3",
   auth: googleAuth,
 });
 
-// El calendarId es tu Gmail o el ID de un calendario específico
+// ID del calendario
 const CALENDAR_ID = "bicodeservices.info@gmail.com";
 
 /* ------------------------------------------------ */

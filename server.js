@@ -1,4 +1,5 @@
 // backend/server.js
+
 import express from "express";
 import cors from "cors";
 import { Server } from "socket.io";
@@ -8,8 +9,6 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import calendarRoutes from "./routes/calendar.js";
-import fs from "fs";
-import { google } from "googleapis";
 
 dotenv.config();
 
@@ -19,32 +18,6 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-/* ------------------------------------------------ */
-/*           GOOGLE CALENDAR CREDENTIALS            */
-/* ------------------------------------------------ */
-
-// 🔥 ESTE ES EL FIX IMPORTANTE 🔥
-// Render guarda el archivo en /etc/secrets/<filename>
-let googleCredentials = null;
-
-try {
-  googleCredentials = JSON.parse(
-    fs.readFileSync("/etc/secrets/service_account.json", "utf8")
-  );
-  console.log("✅ Google Credentials cargadas desde Secret Files");
-} catch (err) {
-  console.error("❌ No se pudieron cargar las Google Credentials:", err);
-}
-
-/* ------------------------------------------------ */
-/*             GOOGLE CALENDAR AUTH CLIENT          */
-/* ------------------------------------------------ */
-
-export const googleAuth = new google.auth.GoogleAuth({
-  credentials: googleCredentials,
-  scopes: ["https://www.googleapis.com/auth/calendar"],
-});
 
 /* ------------------------------------------------ */
 /*                  EXPRESS INIT                    */
@@ -61,7 +34,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://intranet.nicojoel-etchegaray.workers.dev",
-      "https://TU-DOMINIO-AQUI.com" // <-- agregá tu dominio real
+      "https://TU-DOMINIO-AQUI.com"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
