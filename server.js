@@ -1,5 +1,4 @@
 // backend/server.js
-
 import express from "express";
 import cors from "cors";
 import { Server } from "socket.io";
@@ -13,72 +12,49 @@ import calendarRoutes from "./routes/calendar.js";
 dotenv.config();
 
 /* ------------------------------------------------ */
-/*                    PATH UTILS                    */
+/*                   PATH UTILS                     */
 /* ------------------------------------------------ */
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/* ------------------------------------------------ */
-/*                  EXPRESS INIT                    */
-/* ------------------------------------------------ */
-
 const app = express();
-
-/* ------------------------------------------------ */
-/*                    CORS FIX                      */
-/* ------------------------------------------------ */
 
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "https://intranet.nicojoel-etchegaray.workers.dev",
-      "https://TU-DOMINIO-AQUI.com"
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
+    origin: "*",
+    methods: "GET,POST,PUT,DELETE",
+    allowedHeaders: "Content-Type,Authorization",
   })
 );
-
-// FIX para preflight en Cloudflare Workers
-app.options(/\/calendar(\/.*)?$/, cors());
 
 app.use(express.json());
 
 /* ------------------------------------------------ */
-/*             HTTP SERVER + SOCKET.IO              */
+/*          HTTP SERVER + SOCKET.IO SETUP           */
 /* ------------------------------------------------ */
 
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
-  cors: {
-    origin: [
-      "http://localhost:5173",
-      "https://intranet.nicojoel-etchegaray.workers.dev",
-      "https://TU-DOMINIO-AQUI.com"
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE"],
-  },
+  cors: { origin: "*" },
 });
 
 /* ------------------------------------------------ */
-/*                MONGODB CONNECTION                */
+/*                   MONGODB INIT                   */
 /* ------------------------------------------------ */
 
 const client = new MongoClient(process.env.MONGO_URI);
 let db = null;
 
 /* ------------------------------------------------ */
-/*               GOOGLE CALENDAR ROUTES             */
+/*            GOOGLE CALENDAR ROUTES                */
 /* ------------------------------------------------ */
 
 app.use("/calendar", calendarRoutes);
 
 /* ------------------------------------------------ */
-/*           SOCKET.IO ONLINE USERS + BEATS         */
+/*       SOCKET.IO: ONLINE USERS + HEARTBEAT        */
 /* ------------------------------------------------ */
 
 let onlineUsers = new Map();
@@ -94,7 +70,11 @@ async function updateLastSeen(username) {
 async function broadcastUserStatus() {
   const lastSeenList = await db.collection("users_status").find().toArray();
 
-  io.emit("online-users", [...onlineUsers.values()].map((u) => u.username));
+  io.emit(
+    "online-users",
+    [...onlineUsers.values()].map((u) => u.username)
+  );
+
   io.emit("last-seen-users", lastSeenList);
 }
 
@@ -117,30 +97,37 @@ io.on("connection", (socket) => {
       data.lastBeat = Date.now();
       onlineUsers.set(socket.id, data);
     }
+
     await updateLastSeen(username);
   });
 
   socket.on("force-disconnect", async (username) => {
     console.log("⚠️ Force disconnect:", username);
+
     await updateLastSeen(username);
 
     for (const [id, data] of onlineUsers.entries()) {
-      if (data.username === username) onlineUsers.delete(id);
+      if (data.username === username) {
+        onlineUsers.delete(id);
+      }
     }
 
     broadcastUserStatus();
   });
 
   socket.on("disconnect", async () => {
-    const u = onlineUsers.get(socket.id);
-    if (u) {
-      await updateLastSeen(u.username);
+    const userData = onlineUsers.get(socket.id);
+
+    if (userData) {
+      await updateLastSeen(userData.username);
       onlineUsers.delete(socket.id);
     }
+
     broadcastUserStatus();
     console.log("❌ Cliente desconectado:", socket.id);
   });
 
+  // 🔥 Realtime sync
   socket.on("client-updated", (client) => io.emit("client-updated", client));
   socket.on("client-deleted", (id) => io.emit("client-deleted", id));
 
@@ -157,7 +144,7 @@ io.on("connection", (socket) => {
 });
 
 /* ------------------------------------------------ */
-/*              HEARTBEAT AUTO CLEANUP              */
+/*             HEARTBEAT AUTO-CLEANUP               */
 /* ------------------------------------------------ */
 
 setInterval(async () => {
@@ -174,7 +161,7 @@ setInterval(async () => {
 }, 4000);
 
 /* ------------------------------------------------ */
-/*                  HEALTHCHECK                     */
+/*                HEALTHCHECK ROUTE                 */
 /* ------------------------------------------------ */
 
 app.get("/", (req, res) => {
@@ -182,11 +169,14 @@ app.get("/", (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*                    HELPERS                       */
+/*                   HELPERS                        */
 /* ------------------------------------------------ */
 
 function cleanHTML(text) {
-  return text.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim();
+  return text
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .trim();
 }
 
 function normalizeID(obj) {
@@ -194,7 +184,7 @@ function normalizeID(obj) {
 }
 
 /* ------------------------------------------------ */
-/*                  CRUD: CLIENTS                   */
+/*                   CLIENTS CRUD                   */
 /* ------------------------------------------------ */
 
 app.get("/clients", async (req, res) => {
@@ -204,29 +194,38 @@ app.get("/clients", async (req, res) => {
 
 app.post("/clients", async (req, res) => {
   const data = { ...req.body, createdAt: new Date().toISOString() };
+
   const result = await db.collection("clients").insertOne(data);
   const full = normalizeID({ ...data, _id: result.insertedId });
+
   io.emit("client-updated", full);
   res.json(full);
 });
 
 app.put("/clients/:id", async (req, res) => {
   const id = req.params.id;
-  await db.collection("clients").updateOne({ _id: new ObjectId(id) }, { $set: req.body });
+
+  await db
+    .collection("clients")
+    .updateOne({ _id: new ObjectId(id) }, { $set: req.body });
+
   const updated = await db.collection("clients").findOne({ _id: new ObjectId(id) });
+
   io.emit("client-updated", normalizeID(updated));
   res.json(normalizeID(updated));
 });
 
 app.delete("/clients/:id", async (req, res) => {
   const id = req.params.id;
+
   await db.collection("clients").deleteOne({ _id: new ObjectId(id) });
+
   io.emit("client-deleted", id);
   res.json({ ok: true });
 });
 
 /* ------------------------------------------------ */
-/*                  CRUD: ACTIVITIES                */
+/*                  ACTIVITIES CRUD                 */
 /* ------------------------------------------------ */
 
 app.get("/activities", async (req, res) => {
@@ -236,6 +235,7 @@ app.get("/activities", async (req, res) => {
     .sort({ timestamp: -1 })
     .limit(40)
     .toArray();
+
   res.json(list.map(normalizeID));
 });
 
@@ -252,12 +252,12 @@ app.post("/activities", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*                     CRUD: TASKS                  */
+/*                     TASKS CRUD                   */
 /* ------------------------------------------------ */
 
 app.get("/tasks", async (req, res) => {
-  const list = await db.collection("tasks").find().toArray();
-  res.json(list.map(normalizeID));
+  const tasks = await db.collection("tasks").find().toArray();
+  res.json(tasks.map(normalizeID));
 });
 
 app.post("/tasks", async (req, res) => {
@@ -277,7 +277,11 @@ app.post("/tasks", async (req, res) => {
 
 app.put("/tasks/:id", async (req, res) => {
   const id = req.params.id;
-  await db.collection("tasks").updateOne({ _id: new ObjectId(id) }, { $set: req.body });
+
+  await db
+    .collection("tasks")
+    .updateOne({ _id: new ObjectId(id) }, { $set: req.body });
+
   const updated = await db.collection("tasks").findOne({ _id: new ObjectId(id) });
   io.emit("task-updated", normalizeID(updated));
   res.json(normalizeID(updated));
@@ -285,13 +289,15 @@ app.put("/tasks/:id", async (req, res) => {
 
 app.delete("/tasks/:id", async (req, res) => {
   const id = req.params.id;
+
   await db.collection("tasks").deleteOne({ _id: new ObjectId(id) });
+
   io.emit("task-deleted", id);
   res.json({ ok: true });
 });
 
 /* ------------------------------------------------ */
-/*                   CRUD: EXPENSES                 */
+/*                    EXPENSES CRUD                 */
 /* ------------------------------------------------ */
 
 app.get("/expenses", async (req, res) => {
@@ -317,12 +323,12 @@ app.post("/expenses", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*                    CRUD: JOBS                    */
+/*                     JOBS CRUD                    */
 /* ------------------------------------------------ */
 
 app.get("/jobs", async (req, res) => {
-  const list = await db.collection("jobs").find().toArray();
-  res.json(list.map(normalizeID));
+  const jobs = await db.collection("jobs").find().toArray();
+  res.json(jobs.map(normalizeID));
 });
 
 app.post("/jobs", async (req, res) => {
@@ -352,7 +358,10 @@ app.put("/jobs/:id", async (req, res) => {
     updatedAt: new Date().toISOString(),
   };
 
-  await db.collection("jobs").updateOne({ _id: new ObjectId(id) }, { $set: updateData });
+  await db.collection("jobs").updateOne(
+    { _id: new ObjectId(id) },
+    { $set: updateData }
+  );
 
   const updated = await db.collection("jobs").findOne({ _id: new ObjectId(id) });
   const full = normalizeID(updated);
@@ -363,13 +372,15 @@ app.put("/jobs/:id", async (req, res) => {
 
 app.delete("/jobs/:id", async (req, res) => {
   const id = req.params.id;
+
   await db.collection("jobs").deleteOne({ _id: new ObjectId(id) });
+
   io.emit("job-deleted", id);
   res.json({ ok: true });
 });
 
 /* ------------------------------------------------ */
-/*                   START SERVER                   */
+/*                  START SERVER                    */
 /* ------------------------------------------------ */
 
 async function startServer() {
