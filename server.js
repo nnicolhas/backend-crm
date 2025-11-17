@@ -8,6 +8,8 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import calendarRoutes from "./routes/calendar.js";
+import fs from "fs";
+import { google } from "googleapis";
 
 dotenv.config();
 
@@ -17,6 +19,32 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/* ------------------------------------------------ */
+/*           GOOGLE CALENDAR CREDENTIALS            */
+/* ------------------------------------------------ */
+
+// 🔥 ESTE ES EL FIX IMPORTANTE 🔥
+// Render guarda el archivo en /etc/secrets/<filename>
+let googleCredentials = null;
+
+try {
+  googleCredentials = JSON.parse(
+    fs.readFileSync("/etc/secrets/service_account.json", "utf8")
+  );
+  console.log("✅ Google Credentials cargadas desde Secret Files");
+} catch (err) {
+  console.error("❌ No se pudieron cargar las Google Credentials:", err);
+}
+
+/* ------------------------------------------------ */
+/*             GOOGLE CALENDAR AUTH CLIENT          */
+/* ------------------------------------------------ */
+
+export const googleAuth = new google.auth.GoogleAuth({
+  credentials: googleCredentials,
+  scopes: ["https://www.googleapis.com/auth/calendar"],
+});
 
 /* ------------------------------------------------ */
 /*                  EXPRESS INIT                    */
@@ -33,6 +61,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://intranet.nicojoel-etchegaray.workers.dev",
+      "https://TU-DOMINIO-AQUI.com" // <-- agregá tu dominio real
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -40,7 +69,7 @@ app.use(
   })
 );
 
-// FIX para Cloudflare fetch preflight
+// FIX para preflight en Cloudflare Workers
 app.options(/\/calendar(\/.*)?$/, cors());
 
 app.use(express.json());
@@ -56,6 +85,7 @@ const io = new Server(httpServer, {
     origin: [
       "http://localhost:5173",
       "https://intranet.nicojoel-etchegaray.workers.dev",
+      "https://TU-DOMINIO-AQUI.com"
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
   },
@@ -91,11 +121,7 @@ async function updateLastSeen(username) {
 async function broadcastUserStatus() {
   const lastSeenList = await db.collection("users_status").find().toArray();
 
-  io.emit(
-    "online-users",
-    [...onlineUsers.values()].map((u) => u.username)
-  );
-
+  io.emit("online-users", [...onlineUsers.values()].map((u) => u.username));
   io.emit("last-seen-users", lastSeenList);
 }
 
@@ -142,7 +168,6 @@ io.on("connection", (socket) => {
     console.log("❌ Cliente desconectado:", socket.id);
   });
 
-  // Broadcast en tiempo real
   socket.on("client-updated", (client) => io.emit("client-updated", client));
   socket.on("client-deleted", (id) => io.emit("client-deleted", id));
 

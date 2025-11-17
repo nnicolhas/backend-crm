@@ -1,48 +1,20 @@
+// backend/controllers/calendarController.js
+
 import { google } from "googleapis";
-import fs from "fs";
+import { googleAuth } from "../server.js";
 
 /* ------------------------------------------------ */
-/*     DETECTAR AUTOMÁTICAMENTE DÓNDE ESTÁ EL JSON  */
+/*              GOOGLE CALENDAR CLIENT              */
 /* ------------------------------------------------ */
 
-let SERVICE_ACCOUNT_PATH = "/etc/secrets/service_account.json"; // Render
-
-// Si NO existe ese archivo, usar el local
-if (!fs.existsSync(SERVICE_ACCOUNT_PATH)) {
-  SERVICE_ACCOUNT_PATH = "./config/service_account.json"; // Localhost
-}
-
-console.log("📁 Usando credenciales desde:", SERVICE_ACCOUNT_PATH);
-
-/* ------------------------------------------------ */
-/*          CARGAR CREDENCIALES SERVICE ACCOUNT     */
-/* ------------------------------------------------ */
-
-let serviceAcc;
-
-try {
-  serviceAcc = JSON.parse(fs.readFileSync(SERVICE_ACCOUNT_PATH, "utf8"));
-  console.log("🔐 Service Account cargada OK.");
-} catch (err) {
-  console.error("❌ ERROR leyendo credenciales:", SERVICE_ACCOUNT_PATH);
-  console.error(err);
-  throw err;
-}
-
-/* ------------------------------------------------ */
-/*              AUTENTICACIÓN GOOGLE                */
-/* ------------------------------------------------ */
-
-const auth = new google.auth.GoogleAuth({
-  credentials: serviceAcc,
-  scopes: ["https://www.googleapis.com/auth/calendar"],
-});
-
+// Usamos el auth que ya está creado en server.js
+// Esto evita duplicar credenciales y problemas en Render
 const calendar = google.calendar({
   version: "v3",
-  auth,
+  auth: googleAuth,
 });
 
+// El calendarId es tu Gmail o el ID de un calendario específico
 const CALENDAR_ID = "bicodeservices.info@gmail.com";
 
 /* ------------------------------------------------ */
