@@ -12,7 +12,7 @@ import calendarRoutes from "./routes/calendar.js";
 dotenv.config();
 
 /* ------------------------------------------------ */
-/*               CONFIG RUTAS / PATH                */
+/*                   PATH UTILS                     */
 /* ------------------------------------------------ */
 
 const __filename = fileURLToPath(import.meta.url);
@@ -31,7 +31,7 @@ app.use(
 app.use(express.json());
 
 /* ------------------------------------------------ */
-/*         HTTP SERVER + SOCKET.IO SETUP            */
+/*          HTTP SERVER + SOCKET.IO SETUP           */
 /* ------------------------------------------------ */
 
 const httpServer = createServer(app);
@@ -41,7 +41,7 @@ const io = new Server(httpServer, {
 });
 
 /* ------------------------------------------------ */
-/*                MONGODB INSTANCE                  */
+/*                   MONGODB INIT                   */
 /* ------------------------------------------------ */
 
 const client = new MongoClient(process.env.MONGO_URI);
@@ -54,7 +54,7 @@ let db = null;
 app.use("/calendar", calendarRoutes);
 
 /* ------------------------------------------------ */
-/*    SOCKET.IO: ONLINE USERS + HEARTBEAT SYSTEM    */
+/*       SOCKET.IO: ONLINE USERS + HEARTBEAT        */
 /* ------------------------------------------------ */
 
 let onlineUsers = new Map();
@@ -127,7 +127,7 @@ io.on("connection", (socket) => {
     console.log("❌ Cliente desconectado:", socket.id);
   });
 
-  // Realtime updates
+  // 🔥 Realtime sync
   socket.on("client-updated", (client) => io.emit("client-updated", client));
   socket.on("client-deleted", (id) => io.emit("client-deleted", id));
 
@@ -144,15 +144,15 @@ io.on("connection", (socket) => {
 });
 
 /* ------------------------------------------------ */
-/*        TIMEOUT HEARTBEAT CHECK                   */
+/*             HEARTBEAT AUTO-CLEANUP               */
 /* ------------------------------------------------ */
 
 setInterval(async () => {
   const now = Date.now();
 
-  for (const [socketId, userData] of onlineUsers.entries()) {
-    if (now - userData.lastBeat > 12000) {
-      await updateLastSeen(userData.username);
+  for (const [socketId, data] of onlineUsers.entries()) {
+    if (now - data.lastBeat > 12000) {
+      await updateLastSeen(data.username);
       onlineUsers.delete(socketId);
     }
   }
@@ -161,7 +161,7 @@ setInterval(async () => {
 }, 4000);
 
 /* ------------------------------------------------ */
-/*            ROUTE DE PRUEBA / HEALTHCHECK         */
+/*                HEALTHCHECK ROUTE                 */
 /* ------------------------------------------------ */
 
 app.get("/", (req, res) => {
@@ -169,7 +169,7 @@ app.get("/", (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*          HELPERS NORMALIZACIÓN                   */
+/*                   HELPERS                        */
 /* ------------------------------------------------ */
 
 function cleanHTML(text) {
@@ -184,7 +184,7 @@ function normalizeID(obj) {
 }
 
 /* ------------------------------------------------ */
-/*                  CLIENTES CRUD                   */
+/*                   CLIENTS CRUD                   */
 /* ------------------------------------------------ */
 
 app.get("/clients", async (req, res) => {
@@ -209,14 +209,10 @@ app.put("/clients/:id", async (req, res) => {
     .collection("clients")
     .updateOne({ _id: new ObjectId(id) }, { $set: req.body });
 
-  const updated = await db
-    .collection("clients")
-    .findOne({ _id: new ObjectId(id) });
+  const updated = await db.collection("clients").findOne({ _id: new ObjectId(id) });
 
-  const full = normalizeID(updated);
-
-  io.emit("client-updated", full);
-  res.json(full);
+  io.emit("client-updated", normalizeID(updated));
+  res.json(normalizeID(updated));
 });
 
 app.delete("/clients/:id", async (req, res) => {
@@ -229,7 +225,7 @@ app.delete("/clients/:id", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*                 ACTIVIDAD CRUD                   */
+/*                  ACTIVITIES CRUD                 */
 /* ------------------------------------------------ */
 
 app.get("/activities", async (req, res) => {
@@ -251,14 +247,12 @@ app.post("/activities", async (req, res) => {
   };
 
   const result = await db.collection("activities").insertOne(log);
-  const full = normalizeID({ ...log, _id: result.insertedId });
-
-  io.emit("activity-updated", full);
-  res.json(full);
+  io.emit("activity-updated", normalizeID({ ...log, _id: result.insertedId }));
+  res.json(normalizeID({ ...log, _id: result.insertedId }));
 });
 
 /* ------------------------------------------------ */
-/*                      TASKS CRUD                  */
+/*                     TASKS CRUD                   */
 /* ------------------------------------------------ */
 
 app.get("/tasks", async (req, res) => {
@@ -288,18 +282,14 @@ app.put("/tasks/:id", async (req, res) => {
     .collection("tasks")
     .updateOne({ _id: new ObjectId(id) }, { $set: req.body });
 
-  const updated = await db
-    .collection("tasks")
-    .findOne({ _id: new ObjectId(id) });
-
-  const full = normalizeID(updated);
-
-  io.emit("task-updated", full);
-  res.json(full);
+  const updated = await db.collection("tasks").findOne({ _id: new ObjectId(id) });
+  io.emit("task-updated", normalizeID(updated));
+  res.json(normalizeID(updated));
 });
 
 app.delete("/tasks/:id", async (req, res) => {
   const id = req.params.id;
+
   await db.collection("tasks").deleteOne({ _id: new ObjectId(id) });
 
   io.emit("task-deleted", id);
@@ -307,7 +297,7 @@ app.delete("/tasks/:id", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*                  EXPENSES CRUD                   */
+/*                    EXPENSES CRUD                 */
 /* ------------------------------------------------ */
 
 app.get("/expenses", async (req, res) => {
@@ -333,7 +323,7 @@ app.post("/expenses", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*                      JOBS CRUD                   */
+/*                     JOBS CRUD                    */
 /* ------------------------------------------------ */
 
 app.get("/jobs", async (req, res) => {
@@ -343,7 +333,11 @@ app.get("/jobs", async (req, res) => {
 
 app.post("/jobs", async (req, res) => {
   const job = {
-    ...req.body,
+    clientId: req.body.clientId,
+    title: req.body.title,
+    description: req.body.description || "",
+    status: req.body.status || "nuevo",
+    budget: Number(req.body.budget) || 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -358,9 +352,15 @@ app.post("/jobs", async (req, res) => {
 app.put("/jobs/:id", async (req, res) => {
   const id = req.params.id;
 
+  const updateData = {
+    ...req.body,
+    budget: Number(req.body.budget) || 0,
+    updatedAt: new Date().toISOString(),
+  };
+
   await db.collection("jobs").updateOne(
     { _id: new ObjectId(id) },
-    { $set: { ...req.body, updatedAt: new Date().toISOString() } }
+    { $set: updateData }
   );
 
   const updated = await db.collection("jobs").findOne({ _id: new ObjectId(id) });
@@ -380,7 +380,7 @@ app.delete("/jobs/:id", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*                START SERVER — FINAL              */
+/*                  START SERVER                    */
 /* ------------------------------------------------ */
 
 async function startServer() {
@@ -399,6 +399,6 @@ async function startServer() {
   }
 }
 
-startServer(); // ← FINAL, AHORA CORRECTO
+startServer();
 
 export { io };
