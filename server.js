@@ -41,37 +41,20 @@ const io = new Server(httpServer, {
 });
 
 /* ------------------------------------------------ */
-/*                MONGODB SETUP                     */
+/*                MONGODB INSTANCE                  */
 /* ------------------------------------------------ */
 
 const client = new MongoClient(process.env.MONGO_URI);
 let db = null;
 
-async function startServer() {
-  try {
-    await client.connect();
-    db = client.db("crm");
-    console.log("✅ MongoDB conectado");
-
-    const PORT = process.env.PORT || 4000;
-    httpServer.listen(PORT, () =>
-      console.log(`🚀 Backend corriendo en puerto ${PORT}`)
-    );
-  } catch (err) {
-    console.error("❌ Error al conectar MongoDB:", err);
-    process.exit(1);
-  }
-}
-startServer();
-
 /* ------------------------------------------------ */
-/*            GOOGLE CALENDAR (SERVICE ACCOUNT)     */
+/*            GOOGLE CALENDAR ROUTES                */
 /* ------------------------------------------------ */
 
 app.use("/calendar", calendarRoutes);
 
 /* ------------------------------------------------ */
-/*       SOCKET.IO: ONLINE USERS + HEARTBEAT        */
+/*    SOCKET.IO: ONLINE USERS + HEARTBEAT SYSTEM    */
 /* ------------------------------------------------ */
 
 let onlineUsers = new Map();
@@ -98,7 +81,6 @@ async function broadcastUserStatus() {
 io.on("connection", (socket) => {
   console.log("🔌 Cliente conectado:", socket.id);
 
-  /* JOIN */
   socket.on("join", async (username) => {
     onlineUsers.set(socket.id, {
       username,
@@ -109,7 +91,6 @@ io.on("connection", (socket) => {
     broadcastUserStatus();
   });
 
-  /* HEARTBEAT */
   socket.on("heartbeat", async (username) => {
     if (onlineUsers.has(socket.id)) {
       const data = onlineUsers.get(socket.id);
@@ -120,7 +101,6 @@ io.on("connection", (socket) => {
     await updateLastSeen(username);
   });
 
-  /* FORCE DISCONNECT */
   socket.on("force-disconnect", async (username) => {
     console.log("⚠️ Force disconnect:", username);
 
@@ -135,7 +115,6 @@ io.on("connection", (socket) => {
     broadcastUserStatus();
   });
 
-  /* DISCONNECT NORMAL */
   socket.on("disconnect", async () => {
     const userData = onlineUsers.get(socket.id);
 
@@ -148,26 +127,18 @@ io.on("connection", (socket) => {
     console.log("❌ Cliente desconectado:", socket.id);
   });
 
-  /* ------------------------------------------------ */
-  /*                 REALTIME EVENTS                  */
-  /* ------------------------------------------------ */
-
-  // CLIENTES
+  // Realtime updates
   socket.on("client-updated", (client) => io.emit("client-updated", client));
   socket.on("client-deleted", (id) => io.emit("client-deleted", id));
 
-  // TAREAS
   socket.on("task-updated", (task) => io.emit("task-updated", task));
   socket.on("task-deleted", (id) => io.emit("task-deleted", id));
 
-  // ACTIVIDAD
   socket.on("activity-updated", (log) => io.emit("activity-updated", log));
 
-  // GASTOS
   socket.on("expense-updated", (exp) => io.emit("expense-updated", exp));
   socket.on("expense-deleted", (id) => io.emit("expense-deleted", id));
 
-  // ⭐ JOBS (TRABAJOS) — REALTIME
   socket.on("job-updated", (job) => io.emit("job-updated", job));
   socket.on("job-deleted", (id) => io.emit("job-deleted", id));
 });
@@ -190,7 +161,7 @@ setInterval(async () => {
 }, 4000);
 
 /* ------------------------------------------------ */
-/*             ROUTE DE PRUEBA                     */
+/*            ROUTE DE PRUEBA / HEALTHCHECK         */
 /* ------------------------------------------------ */
 
 app.get("/", (req, res) => {
@@ -198,7 +169,7 @@ app.get("/", (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*           HELPERS NORMALIZACIÓN                  */
+/*          HELPERS NORMALIZACIÓN                   */
 /* ------------------------------------------------ */
 
 function cleanHTML(text) {
@@ -213,7 +184,7 @@ function normalizeID(obj) {
 }
 
 /* ------------------------------------------------ */
-/*                 CLIENTES CRUD                    */
+/*                  CLIENTES CRUD                   */
 /* ------------------------------------------------ */
 
 app.get("/clients", async (req, res) => {
@@ -258,7 +229,7 @@ app.delete("/clients/:id", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*                ACTIVIDAD CRUD                   */
+/*                 ACTIVIDAD CRUD                   */
 /* ------------------------------------------------ */
 
 app.get("/activities", async (req, res) => {
@@ -287,7 +258,7 @@ app.post("/activities", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*                    TASKS CRUD                   */
+/*                      TASKS CRUD                  */
 /* ------------------------------------------------ */
 
 app.get("/tasks", async (req, res) => {
@@ -336,7 +307,7 @@ app.delete("/tasks/:id", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*                EXPENSES CRUD                    */
+/*                  EXPENSES CRUD                   */
 /* ------------------------------------------------ */
 
 app.get("/expenses", async (req, res) => {
@@ -362,7 +333,7 @@ app.post("/expenses", async (req, res) => {
 });
 
 /* ------------------------------------------------ */
-/*                     JOBS CRUD                    */
+/*                      JOBS CRUD                   */
 /* ------------------------------------------------ */
 
 app.get("/jobs", async (req, res) => {
@@ -407,5 +378,27 @@ app.delete("/jobs/:id", async (req, res) => {
   io.emit("job-deleted", id);
   res.json({ ok: true });
 });
+
+/* ------------------------------------------------ */
+/*                START SERVER — FINAL              */
+/* ------------------------------------------------ */
+
+async function startServer() {
+  try {
+    await client.connect();
+    db = client.db("crm");
+    console.log("✅ MongoDB conectado");
+
+    const PORT = process.env.PORT || 4000;
+    httpServer.listen(PORT, () =>
+      console.log(`🚀 Backend corriendo en puerto ${PORT}`)
+    );
+  } catch (err) {
+    console.error("❌ Error al conectar MongoDB:", err);
+    process.exit(1);
+  }
+}
+
+startServer(); // ← FINAL, AHORA CORRECTO
 
 export { io };
