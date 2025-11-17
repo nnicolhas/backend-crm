@@ -41,8 +41,7 @@ app.use(
 );
 
 // FIX para Cloudflare fetch preflight
-app.options("/", cors());
-app.options("/calendar/*", cors());
+app.options(/\/calendar(\/.*)?$/, cors());
 
 app.use(express.json());
 
